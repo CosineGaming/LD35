@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<script src="phaser.min.js"></script>
+        <script src="svg.min.js"></script>
 		<script src="ld35.js"></script>
 		<style>
 			*
@@ -9,8 +9,20 @@
 				margin: 0;
 				padding: 0;
 			}
+			#game
+			{
+				overflow: hidden;
+			}
+			#cover
+			{
+				width: 100%;
+				height: 100%;
+				overflow: hidden;
+			}
 		</style>
 	</head>
 	<body>
+		<div id="cover"></div>
+		<div id="game"></div>
 	</body>
 </html>
