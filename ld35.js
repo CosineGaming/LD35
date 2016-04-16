@@ -18,16 +18,16 @@ function initialize()
     container.addEventListener("mousemove", hovered);
     container.addEventListener("keyup", pressed);
     container.focus();
-	container.style.backgroundColor = "#000";
+	container.style.backgroundColor = "#00010f";
 
     game = SVG("game");
 	resize();
 	window.onresize = resizeCallback;
 
 	paper = [[16,16], [112,16], [112,112], [16,112]];
-	paperObject = game.polygon(paper).fill("#FFF");
-	foldLineObject = game.line([[0, 0], [0, 0]]).stroke({color:"#F00", width: 0.5});
-    var gridStyle = { color: "#BBB", width: 0.2 };
+	paperObject = game.polygon(paper).fill("#fff");
+	foldLineObject = game.line([[0, 0], [0, 0]]).stroke({color:"#f698ec", width: 0.5});
+    var gridStyle = { color: "#bbb", width: 0.2 };
     for (var i=0; i<=128; i+=8)
     {
         game.line(i, 0, i, 128).stroke(gridStyle);
@@ -42,6 +42,14 @@ function mouseDown(e)
 	e.preventDefault();
 	hovered(e);
 }
+function hovered(e)
+{
+	if (e.buttons)
+	{
+		foldLine[1] = [gameX(e.clientX), gameY(e.clientY)];
+		foldLineObject.plot(foldLine);
+	}
+}
 function mouseUp(e)
 {
 	foldLine[1][0] = Math.round(gameX(e.clientX)/8)*8;
@@ -49,6 +57,7 @@ function mouseUp(e)
 	var m = slope(foldLine); // Slope
 	var b = foldLine[0][1] - m*foldLine[0][0]; // Equation for y-intercept
 	var firstPoint = paper[0];
+	var intersections = [];
 	for (var i=0; i<paper.length; ++i)
 	{
 		var nextPoint;
@@ -78,40 +87,39 @@ function mouseUp(e)
 			x = paper[i][0]; // Vertical line: x is any point on it
 			y = m*x+b;
 		}
-		// Checks if the intersect is within the bounds of the line
-		var intersected = (x >= Math.min(nextPoint[0], paper[i][0]) && x <= Math.max(nextPoint[0], paper[i][0]) &&
-			y >= Math.min(nextPoint[1], paper[i][1]) && y <= Math.max(nextPoint[1], paper[i][1]));
+		// Checks if the intersect is within the bounds of both line segments
+		var intersected = (
+			x >= Math.min(nextPoint[0], paper[i][0]) && x <= Math.max(nextPoint[0], paper[i][0]) &&
+			y >= Math.min(nextPoint[1], paper[i][1]) && y <= Math.max(nextPoint[1], paper[i][1]) &&
+			x >= Math.min(foldLine[0][0], foldLine[1][0]) && x <= Math.max(foldLine[0][0], foldLine[1][0]) &&
+			y >= Math.min(foldLine[0][1], foldLine[1][1]) && y <= Math.max(foldLine[0][1], foldLine[1][1]));
 		if (intersected)
 		{
-			game.circle(3).move(x, y).fill("#0F0");
-			paper.splice(i+1, 0, [x, y]);
-		}
-		var newX;
-		var newY;
-		if (m != null)
-		{
-			if (paper[i][1] < m*paper[i][0]+b)
-			{
-				// Algorithm for reflecting point across line
-				var d = (paper[i][0] + (paper[i][1]-b)*m)/(1 + m*m);
-				newX = 2*d - paper[i][0];
-				newY = 2*d*m - paper[i][1] + 2*b;
-				paper[i] = [newX, newY];
-			}
-		}
-		if (intersected)
-		{
-			++i;
+			game.circle(3).move(x, y).fill("#0f0");
+			paper.splice(++i, 0, [x, y]);
+			intersections.push({"i":i, "x":x, "y":y});
 		}
 	}
-	redraw();
+
+	paperObject.plot(paper);
+	foldLineObject.plot(foldLine);
 }
-function hovered(e)
+
+function reflect()
 {
-	if (e.buttons)
+	// Basically a pastebin, need for later
+	var newX;
+	var newY;
+	if (m != null)
 	{
-		foldLine[1] = [gameX(e.clientX), gameY(e.clientY)];
-		redraw();
+		if (paper[i][1] < m*paper[i][0]+b)
+		{
+			// Algorithm for reflecting point across line
+			var d = (paper[i][0] + (paper[i][1]-b)*m)/(1 + m*m);
+			newX = 2*d - paper[i][0];
+			newY = 2*d*m - paper[i][1] + 2*b;
+			paper[i] = [newX, newY];
+		}
 	}
 }
 
@@ -123,8 +131,8 @@ function pressed(e)
 function redraw()
 {
 
-	foldLineObject.plot(foldLine);
-	paperObject.plot(paper);
+
+
 
 }
 
@@ -154,7 +162,7 @@ function gameY(windowY)
 function resize()
 {
     size = Math.min(window.innerWidth, window.innerHeight);
-	aspectExtra = (window.innerWidth - window.innerHeight) / 2; // TODO: Make axis independent
+	aspectExtra = (window.innerWidth - window.innerHeight) / 2; // TODO: Make axis-independent
 	//game.viewbox(-aspectExtra,128+aspectExtra,128,128);
 	game.viewbox(0,0,128,128);
     container.style.width = window.innerWidth + "px";
