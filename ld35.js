@@ -14,6 +14,8 @@ var gridGroup;
 var foldLine = [[0,0],[0,0]];
 var foldLineObject;
 
+var circleGroup;
+
 var mode = "line";
 
 function initialize()
@@ -36,8 +38,9 @@ function initialize()
 	paperGroup = game.group().fill("#fff");
 	paperObjects.push(paperGroup.polygon(papers[0]));
 	optionGroup = game.group().fill("#fff");
+	circleGroup = game.group();
 	foldLineObject = game.line([[0, 0], [0, 0]]).stroke({color:"#f698ec", width: 0.5});
-    var gridStyle = { color: "#bbb", width: 0.2 };
+    var gridStyle = { color: "#bbb", width: 0.1 };
 	gridGroup = game.group()
     for (var i=0; i<=128; i+=8)
     {
@@ -84,6 +87,7 @@ function mouseUp(e)
 		foldLine[1][1] = Math.round(gameY(e.clientY)/8)*8;
 		split();
 		mode = "pick";
+		hovered(e);
 		foldLineObject.plot(foldLine);
 	}
 	else if (mode == "pick")
@@ -102,6 +106,9 @@ function mouseUp(e)
 function split()
 {
 
+	circleGroup.remove();
+	circleGroup = game.group();
+
 	// Fold each layer of the paper
 	for (var layer=0; layer<papers.length; ++layer)
 	{
@@ -117,12 +124,9 @@ function split()
 		{
 			paperUp = firstPoint[1] + epsilon > m*firstPoint[0]+b;
 			// Lands directly on the line.
-			while (Math.abs(paper[1][1] - m*paper[1][0]+b) < epsilon)
+			if (paperUp && firstPoint[1] - epsilon < m*firstPoint[0]+b)
 			{
-				if (Math.abs(paper[1][1] - m*paper[1][0]+b) < epsilon)
-					paperUp = false;
-				else
-					paperUp = true;
+				paperUp = true;
 			}
 		}
 		else
@@ -131,10 +135,7 @@ function split()
 			// Lands directly on the line.
 			if (paperUp && firstPoint[0] + epsilon > foldLine[0][0])
 			{
-				if (Math.abs(paper[1][0] - foldLine[0][0]) < epsilon)
-					paperUp = false;
-				else
-					paperUp = true;
+				paperUp = true;
 			}
 		}
 		for (var i=0; i<paper.length; ++i)
@@ -147,28 +148,46 @@ function split()
 			intersection = intersect([paper[i], nextPoint], foldLine);
 			var x = intersection[0];
 			var y = intersection[1];
-			// Checks if the intersect is within the bounds of both line segments
-			var intersected = (
-				x >= Math.min(nextPoint[0], paper[i][0]) && x <= Math.max(nextPoint[0], paper[i][0]) &&
-				y >= Math.min(nextPoint[1], paper[i][1]) && y <= Math.max(nextPoint[1], paper[i][1]) &&
-				x >= Math.min(foldLine[0][0], foldLine[1][0]) && x <= Math.max(foldLine[0][0], foldLine[1][0]) &&
-				y >= Math.min(foldLine[0][1], foldLine[1][1]) && y <= Math.max(foldLine[0][1], foldLine[1][1]));
-			// (intersection[0] != nextPoint[0] || intersection[1] != nextPoint[1])) &&
-			// (intersection[0] != paper[i][0] || intersection[1] != paper[i][1]
-			if ((intersections == 1 && paperUp) || (intersections != 1 && !paperUp))
+			var intersected = false;
+			var intersectVertex = false;
+			if (intersection[2] == 0)
 			{
+				intersected = true;
+				intersectVertex = true;
+				option = [];
+				option.push(paper);
+				paper = [];
+				break;
+			}
+			else if (intersection[2] == 1)
+			{
+				//alert(x + ", " + y)
+				// Checks if the intersect is within the bounds of both line segments
+				intersected = (
+					x >= Math.min(nextPoint[0], paper[i][0]) && x <= Math.max(nextPoint[0], paper[i][0]) &&
+					y >= Math.min(nextPoint[1], paper[i][1]) && y <= Math.max(nextPoint[1], paper[i][1]) &&
+					x >= Math.min(foldLine[0][0], foldLine[1][0]) && x <= Math.max(foldLine[0][0], foldLine[1][0]) &&
+					y >= Math.min(foldLine[0][1], foldLine[1][1]) && y <= Math.max(foldLine[0][1], foldLine[1][1]));
+				intersectVertex = x == paper[i][0] && y == paper[i][1];
+				if (x == nextPoint[0] && y == nextPoint[1])
+				{
+					intersected = false;
+				}
+			}
+			if (((intersections == 1 && paperUp) || (intersections != 1 && !paperUp)) && !intersectVertex)
+			{
+				// It's an option vertex
 				option.push(paper[i]);
 				paper.splice(i--, 1);
 			}
 			if (intersected)
 			{
-				game.circle(3).move(x, y).fill("#0f0");
-				//if (((intersection[0] != nextPoint[0] || intersection[1] != nextPoint[1])) &&
-				//	(intersection[0] != paper[i][0] || intersection[1] != paper[i][1]))
+				circleGroup.circle(3).move(x, y).fill("#0f0");
+				if (!intersectVertex)
 				{
-					paper.splice(++i, 0, intersection);
-					option.push(intersection);
+					paper.splice(++i, 0, [x, y]);
 				}
+				option.push([x, y]);
 				++intersections;
 			}
 		}
@@ -189,7 +208,6 @@ function split()
 		}
 
 	}
-	paperGroup.fill("#00f");
 
 }
 
@@ -276,7 +294,7 @@ function colorLayers(highlight)
 		}
 		else
 		{
-			var per = 15;
+			var per = 10;
 			var grey = 255-layer*per;
 			color = {r: grey, g: grey, b: grey};
 		}
@@ -286,6 +304,7 @@ function colorLayers(highlight)
 	}
 }
 
+// Returs [x, y, status]. Status is 1 for success, 0 for exact same line, -1 for parallel
 function intersect(line1, line2)
 {
 	var m = slope(line2); // Slope
@@ -298,6 +317,19 @@ function intersect(line1, line2)
 		var c = yIntercept(n, line1[0]);
 		if (m != null)
 		{
+			if (m-n == 0)
+			{
+				if (c == b)
+				{
+					// Exact same line
+					return [0, 0, 0];
+				}
+				else
+				{
+					// Parallel lines
+					return [-1, -1, -1];
+				}
+			}
 			x = (c-b)/(m-n); // Equation for intersection of a line
 			y = m*x+b;
 		}
@@ -312,7 +344,7 @@ function intersect(line1, line2)
 		x = line1[0][0]; // Vertical line: x is any point on it
 		y = m*x+b;
 	}
-	return [x, y];
+	return [x, y, 1];
 }
 
 function yIntercept(m, point)
