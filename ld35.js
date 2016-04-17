@@ -10,11 +10,16 @@ var paperObjects = [];
 var options = [];
 var optionGroup;
 var optionObjects = [];
+var answer;
+var answerGroup;
 var gridGroup;
 var foldLine = [[0,0],[0,0]];
 var foldLineObject;
+var successObject;
 
-var circleGroup;
+var level = 0;
+
+var hashModulus = 65521;
 
 var mode = "line";
 
@@ -26,7 +31,8 @@ function initialize()
     container.addEventListener("mousedown", mouseDown);
     container.addEventListener("mouseup", mouseUp);
     container.addEventListener("mousemove", hovered);
-    container.addEventListener("keyup", pressed);
+    container.addEventListener("keydown", pressed);
+	container.addEventListener("keyup", released);
     container.focus();
 	container.style.backgroundColor = "#00010f";
 
@@ -34,20 +40,63 @@ function initialize()
 	resize();
 	window.onresize = resizeCallback;
 
+	loadLevel(0, true);
+
+}
+
+function loadLevel(index, firstTime)
+{
+
+	if (typeof index !== 'undefined')
+	{
+		level = index;
+	}
+
+	if (!firstTime)
+	{
+		papers = [];
+		paperGroup.remove();
+		paperObjects = [];
+		options = [];
+		optionGroup.remove();
+		optionObjects = [];
+		foldLineObject.remove();
+		answerGroup.remove();
+		gridGroup.remove();
+		successObject.remove();
+	}
+
 	papers.push([[16,16], [112,16], [112,112], [16,112]]);
-	paperGroup = game.group().fill("#fff");
+	paperGroup = game.group().fill("#fff").opacity(0);
 	paperObjects.push(paperGroup.polygon(papers[0]));
-	optionGroup = game.group().fill("#fff");
-	circleGroup = game.group();
+	optionGroup = game.group().fill("#fff").opacity(0);
 	foldLineObject = game.line([[0, 0], [0, 0]]).stroke({color:"#f698ec", width: 0.5});
+	answerGroup = game.group();
     var gridStyle = { color: "#bbb", width: 0.1 };
-	gridGroup = game.group()
+	gridGroup = game.group();
     for (var i=0; i<=128; i+=8)
     {
         gridGroup.line(i, 0, i, 128).stroke(gridStyle);
         gridGroup.line(0, i, 128, i).stroke(gridStyle);
     }
+	successObject = game.image("static/creased/assets/success.svg").opacity(0);
 
+	answer = levels[level].hash;
+	for (var layer=0; layer<levels[level].layers.length; ++layer)
+	{
+		var color = 255-layer*10;
+		answerGroup.polygon(levels[level].layers[layer]).fill(new SVG.Color({r:color-50, g:color, b:color-50}));
+	}
+
+	setTimeout(function(){showPaper(true);}, 2500);
+
+}
+
+function showPaper(show)
+{
+	answerGroup.opacity(1-show);
+	paperGroup.opacity(0+show);
+	optionGroup.opacity(0+show);
 }
 
 function mouseDown(e)
@@ -95,6 +144,11 @@ function mouseUp(e)
 		fold(pick(e));
 		colorLayers();
 		mode = "line";
+		if (hashPaper() == answer)
+		{
+			successObject.opacity(1);
+			setTimeout(function(){loadLevel(level+1);},2000);
+		}
 	}
 	else
 	{
@@ -105,9 +159,6 @@ function mouseUp(e)
 
 function split()
 {
-
-	circleGroup.remove();
-	circleGroup = game.group();
 
 	// Fold each layer of the paper
 	for (var layer=0; layer<papers.length; ++layer)
@@ -122,12 +173,25 @@ function split()
 		var epsilon = 0.001;
 		if (m != null)
 		{
-			paperUp = firstPoint[1] + epsilon > m*firstPoint[0]+b;
-			// Lands directly on the line.
-			if (paperUp && firstPoint[1] - epsilon < m*firstPoint[0]+b)
+			if (Math.abs(paper[0][1] - (m*paper[0][0]+b)) < epsilon)
 			{
-				paperUp = true;
+				if (Math.abs(paper[1][1] - (m*paper[1][0]+b)) < epsilon)
+				{
+					// Starts on the line. paperUp is the next point's paperUp value (because 2 is even)
+					paperUp = paper[2][1] + epsilon > m*paper[2][0]+b;
+				}
+				else
+				{
+					// Starts on a point. paperUp is the opposite of the next point's paperUp value (because 1 is odd)
+					paperUp = paper[1][1] + epsilon < m*paper[1][0]+b;
+				}
 			}
+			else
+			{
+				// Starts off the point. PaperUp is the first point's paperUp value
+				paperUp = paper[0][1] + epsilon > m*paper[0][0]+b;
+			}
+			// Lands directly on the line.
 		}
 		else
 		{
@@ -148,31 +212,20 @@ function split()
 			intersection = intersect([paper[i], nextPoint], foldLine);
 			var x = intersection[0];
 			var y = intersection[1];
-			var intersected = false;
-			var intersectVertex = false;
-			if (intersection[2] == 0)
+			// Checks if the intersect is within the bounds of both line segments
+			var intersected = (
+				x >= Math.min(nextPoint[0], paper[i][0]) && x <= Math.max(nextPoint[0], paper[i][0]) &&
+				y >= Math.min(nextPoint[1], paper[i][1]) && y <= Math.max(nextPoint[1], paper[i][1]) &&
+				x >= Math.min(foldLine[0][0], foldLine[1][0]) && x <= Math.max(foldLine[0][0], foldLine[1][0]) &&
+				y >= Math.min(foldLine[0][1], foldLine[1][1]) && y <= Math.max(foldLine[0][1], foldLine[1][1]));
+			var intersectVertex = x == paper[i][0] && y == paper[i][1];
+			if (intersectVertex)
 			{
-				intersected = true;
-				intersectVertex = true;
-				option = [];
-				option.push(paper);
-				paper = [];
-				break;
+				//alert(paperUp);
 			}
-			else if (intersection[2] == 1)
+			if (x == nextPoint[0] && y == nextPoint[1])
 			{
-				//alert(x + ", " + y)
-				// Checks if the intersect is within the bounds of both line segments
-				intersected = (
-					x >= Math.min(nextPoint[0], paper[i][0]) && x <= Math.max(nextPoint[0], paper[i][0]) &&
-					y >= Math.min(nextPoint[1], paper[i][1]) && y <= Math.max(nextPoint[1], paper[i][1]) &&
-					x >= Math.min(foldLine[0][0], foldLine[1][0]) && x <= Math.max(foldLine[0][0], foldLine[1][0]) &&
-					y >= Math.min(foldLine[0][1], foldLine[1][1]) && y <= Math.max(foldLine[0][1], foldLine[1][1]));
-				intersectVertex = x == paper[i][0] && y == paper[i][1];
-				if (x == nextPoint[0] && y == nextPoint[1])
-				{
-					intersected = false;
-				}
+				intersected = false;
 			}
 			if (((intersections == 1 && paperUp) || (intersections != 1 && !paperUp)) && !intersectVertex)
 			{
@@ -182,7 +235,6 @@ function split()
 			}
 			if (intersected)
 			{
-				circleGroup.circle(3).move(x, y).fill("#0f0");
 				if (!intersectVertex)
 				{
 					paper.splice(++i, 0, [x, y]);
@@ -304,7 +356,7 @@ function colorLayers(highlight)
 	}
 }
 
-// Returs [x, y, status]. Status is 1 for success, 0 for exact same line, -1 for parallel
+// Returs [x, y]. Returns [null, null] if lines are parallel
 function intersect(line1, line2)
 {
 	var m = slope(line2); // Slope
@@ -321,13 +373,13 @@ function intersect(line1, line2)
 			{
 				if (c == b)
 				{
-					// Exact same line
-					return [0, 0, 0];
+					// Exact same line. Return the first point
+					return line1[0];
 				}
 				else
 				{
 					// Parallel lines
-					return [-1, -1, -1];
+					return [null, null];
 				}
 			}
 			x = (c-b)/(m-n); // Equation for intersection of a line
@@ -344,7 +396,7 @@ function intersect(line1, line2)
 		x = line1[0][0]; // Vertical line: x is any point on it
 		y = m*x+b;
 	}
-	return [x, y, 1];
+	return [x, y];
 }
 
 function yIntercept(m, point)
@@ -352,8 +404,68 @@ function yIntercept(m, point)
 	return point[1] - m*point[0];
 }
 
+function hashPaper()
+{
+	var hash = 0;
+	for (var layer=0; layer<papers.length; ++layer)
+	{
+		for (var point=0; point<papers[layer].length; ++point)
+		{
+			hash += papers[layer][point][0] + papers[layer][point][1];
+			hash %= hashModulus;
+		}
+	}
+	return hash;
+}
+
 function pressed(e)
 {
+
+	if (e.keyCode == ' '.charCodeAt(0))
+	{
+		showPaper(false);
+	}
+
+}
+
+function released(e)
+{
+
+	if (e.keyCode == ' '.charCodeAt(0))
+	{
+		showPaper(true);
+	}
+	if (e.keyCode == 'R'.charCodeAt(0))
+	{
+		loadLevel(level);
+	}
+
+	if (e.keyCode == '='.charCodeAt(0))
+	{
+		document.write("{layers:[")
+		for (var layer=0; layer<papers.length; ++layer)
+		{
+			document.write("[");
+			for (var point=0; point<papers[layer].length; ++point)
+			{
+				document.write("[")
+				document.write(papers[layer][point]);
+				document.write("]")
+				if (point != papers[layer].length - 1)
+				{
+					document.write(",")
+				}
+			}
+			document.write("]");
+			if (layer != papers.length-1)
+			{
+				document.write(",");
+			}
+		}
+		document.write("],hash:");
+		document.write(hashPaper());
+		document.write("}")
+	}
 
 }
 
