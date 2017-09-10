@@ -16,8 +16,10 @@ var gridGroup;
 var foldLine = [[0,0],[0,0]];
 var foldLineObject;
 var successObject;
+var restartObject;
 
 var level = 0;
+var clickLine = false;
 
 var hashModulus = 65521;
 
@@ -26,17 +28,17 @@ var mode = "line";
 function initialize()
 {
 
-    container = document.getElementById("game");
-    container.setAttribute("tabindex", 0)
-    container.addEventListener("mousedown", mouseDown);
-    container.addEventListener("mouseup", mouseUp);
-    container.addEventListener("mousemove", hovered);
-    container.addEventListener("keydown", pressed);
+	container = document.getElementById("game");
+	container.setAttribute("tabindex", 0)
+	container.addEventListener("mousedown", mouseDown);
+	container.addEventListener("mouseup", mouseUp);
+	container.addEventListener("mousemove", hovered);
+	container.addEventListener("keydown", pressed);
 	container.addEventListener("keyup", released);
-    container.focus();
+	container.focus();
 	container.style.backgroundColor = "#00010f";
 
-    game = SVG("game");
+	game = SVG("game");
 	resize();
 	window.onresize = resizeCallback;
 
@@ -52,6 +54,12 @@ function loadLevel(index, firstTime)
 		level = index;
 	}
 
+	if (level >= levels.length)
+	{
+		alert("YOU WIN!");
+		return;
+	}
+
 	if (!firstTime)
 	{
 		papers = [];
@@ -64,28 +72,31 @@ function loadLevel(index, firstTime)
 		answerGroup.remove();
 		gridGroup.remove();
 		successObject.remove();
+		restartObject.remove();
 	}
 
 	papers.push([[16,16], [112,16], [112,112], [16,112]]);
-	paperGroup = game.group().fill("#fff").opacity(0);
+	paperGroup = game.group().opacity(0);
 	paperObjects.push(paperGroup.polygon(papers[0]));
-	optionGroup = game.group().fill("#fff").opacity(0);
+	optionGroup = game.group().opacity(0);
+	colorLayers(false);
 	foldLineObject = game.line([[0, 0], [0, 0]]).stroke({color:"#f698ec", width: 0.5});
 	answerGroup = game.group();
-    var gridStyle = { color: "#bbb", width: 0.1 };
+	var gridStyle = { color: "#bbb", width: 0.1 };
 	gridGroup = game.group();
-    for (var i=0; i<=128; i+=8)
-    {
-        gridGroup.line(i, 0, i, 128).stroke(gridStyle);
-        gridGroup.line(0, i, 128, i).stroke(gridStyle);
-    }
+	for (var i=0; i<=128; i+=8)
+	{
+		gridGroup.line(i, 0, i, 128).stroke(gridStyle);
+		gridGroup.line(0, i, 128, i).stroke(gridStyle);
+	}
+	restartObject = game.image("static/creased/assets/restart.svg", 10, 10).move(5, 5);
 	successObject = game.image("static/creased/assets/success.svg").opacity(0);
 
 	answer = levels[level].hash;
 	for (var layer=0; layer<levels[level].layers.length; ++layer)
 	{
 		var color = 255-layer*10;
-		answerGroup.polygon(levels[level].layers[layer]).fill(new SVG.Color({r:color-50, g:color, b:color-50}));
+		answerGroup.polygon(levels[level].layers[layer]).fill(new SVG.Color({r:color, g:color-50, b:color-50}));
 	}
 
 	setTimeout(function(){showPaper(true);}, 2500);
@@ -94,27 +105,38 @@ function loadLevel(index, firstTime)
 
 function showPaper(show)
 {
-	answerGroup.opacity(1-show);
-	paperGroup.opacity(0+show);
-	optionGroup.opacity(0+show);
+	answerGroup.opacity(1.3-show);
+	paperGroup.opacity(0.1+show);
+	optionGroup.opacity(0.1+show);
 }
 
 function mouseDown(e)
 {
 	if (mode == "line")
 	{
-		foldLine[0] = [Math.round(gameX(e.clientX)/8)*8, Math.round(gameY(e.clientY)/8)*8];
-		e.preventDefault();
-		hovered(e);
+		if (!clickLine)
+		{
+			foldLine[0] = [Math.round(gameX(e.clientX)/8)*8, Math.round(gameY(e.clientY)/8)*8];
+			e.preventDefault();
+			hovered(e);
+		}
 	}
 }
 function hovered(e)
 {
 	if (mode == "line")
 	{
-		if (e.buttons)
+		if (e.buttons || clickLine)
 		{
 			foldLine[1] = [gameX(e.clientX), gameY(e.clientY)];
+			// If the line spans at least a square
+			if (foldLine[0][0] != Math.round(gameX(e.clientX)/8)*8 || foldLine[0][1] != Math.round(gameY(e.clientY)/8)*8)
+			{
+				// If the button is held down long enough to move squares, and then released in the same square,
+				// we can assume that they were trying to cancel their line. By setting clickLine to true,
+				// it will be as if they have already clicked, so when the release the line will be canceled in mouseUp
+				clickLine = true;
+			}
 			foldLineObject.plot(foldLine);
 		}
 	}
@@ -130,14 +152,44 @@ function hovered(e)
 function mouseUp(e)
 {
 
-	if (mode == "line")
+	if (gameX(e.clientX) > 5 && gameX(e.clientX) < 15 && gameY(e.clientY) > 5 && gameY(e.clientY) < 15)
+	{
+		if (clickLine)
+		{
+			clickLine = false;
+			foldLineObject.plot([[0,0],[0,0]]);
+		}
+		else
+		{
+			loadLevel(level);
+		}
+	}
+	else if (mode == "line")
 	{
 		foldLine[1][0] = Math.round(gameX(e.clientX)/8)*8;
 		foldLine[1][1] = Math.round(gameY(e.clientY)/8)*8;
-		split();
-		mode = "pick";
-		hovered(e);
-		foldLineObject.plot(foldLine);
+		if (foldLine[0][0] == foldLine[1][0] && foldLine[0][1] == foldLine[1][1])
+		{
+			if (!clickLine)
+			{
+				// The mouse didn't move; they're clicking two points rather than dragging
+				clickLine = true;
+			}
+			else
+			{
+				// They clicked twice in the same place; they must be trying to cancel
+				clickLine = false;
+				foldLineObject.plot([[0,0],[0,0]]);
+			}
+		}
+		else
+		{
+			split();
+			mode = "pick";
+			hovered(e);
+			foldLineObject.plot(foldLine);
+			clickLine = false;
+		}
 	}
 	else if (mode == "pick")
 	{
@@ -335,24 +387,36 @@ function fold(paperSelected)
 	optionObjects = [];
 }
 
-function colorLayers(highlight)
+function colorLayers(paperHighlighted)
 {
+	// Highlight color
+	var highlightColor = {r: 246, g: 153, b: 236};
+	var baseColor = {r: 211, g: 228, b: 249};
+	var per = 10;
+	var paperColor;
+	var optionColor;
+	if (paperHighlighted)
+	{
+		paperColor = highlightColor;
+		optionColor = baseColor;
+	}
+	else
+	{
+		paperColor = baseColor;
+		optionColor = highlightColor;
+	}
 	for (var layer=0; layer<paperObjects.length; ++layer)
 	{
-		var color;
-		if (highlight)
-		{
-			color = "#f698ec";
-		}
-		else
-		{
-			var per = 10;
-			var grey = 255-layer*per;
-			color = {r: grey, g: grey, b: grey};
-		}
-		paperObjects[layer].fill(new SVG.Color(color));
+		var grey = per*layer;
+		paperObjects[layer].fill(new SVG.Color({r: paperColor.r-grey, g: paperColor.g-grey, b: paperColor.b-grey}));
+		// Order elements to ensure proper display order
 		paperObjects[layer].remove();
 		paperGroup.add(paperObjects[layer]);
+	}
+	for (var layer=0; layer<optionObjects.length; ++layer)
+	{
+		var grey = per*layer;
+		optionObjects[layer].fill(new SVG.Color({r: optionColor.r-grey, g: optionColor.g-grey, b: optionColor.b-grey}));
 	}
 }
 
@@ -439,6 +503,14 @@ function released(e)
 	{
 		loadLevel(level);
 	}
+	if (e.keyCode == '0'.charCodeAt(0))
+	{
+		loadLevel(level+1);
+	}
+	if (e.keyCode == '9'.charCodeAt(0))
+	{
+		loadLevel(level-1);
+	}
 
 	if (e.keyCode == '='.charCodeAt(0))
 	{
@@ -472,29 +544,29 @@ function released(e)
 function slope(line)
 {
 	var dx = line[1][0] - line[0][0];
-    if (dx == 0)
-        return null;
-    else
-        return (line[1][1] - line[0][1]) / dx;
+	if (dx == 0)
+		return null;
+	else
+		return (line[1][1] - line[0][1]) / dx;
 }
 
 function gameX(windowX)
 {
-    return (windowX - window.innerWidth / 2) / size * 128 + 64;
+	return (windowX - window.innerWidth / 2) / size * 128 + 64;
 }
 function gameY(windowY)
 {
-    return windowY / size * 128;
+	return windowY / size * 128;
 }
 
 function resize()
 {
-    size = Math.min(window.innerWidth, window.innerHeight);
+	size = Math.min(window.innerWidth, window.innerHeight);
 	aspectExtra = (window.innerWidth - window.innerHeight) / 2; // TODO: Make axis-independent
 	//game.viewbox(-aspectExtra,128+aspectExtra,128,128);
 	game.viewbox(0,0,128,128);
-    container.style.width = window.innerWidth + "px";
-    container.style.height = window.innerHeight + "px";
+	container.style.width = window.innerWidth + "px";
+	container.style.height = window.innerHeight + "px";
 }
 
 function resizeCallback()
@@ -507,3 +579,4 @@ function resizeCallback()
 }
 
 onload = initialize;
+
